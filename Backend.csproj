@@ -14,4 +14,9 @@
     </PackageReference>
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="Backend.Tests\**\*.cs" />
+    <None Remove="Backend.Tests\**\*.*" />
+  </ItemGroup>
+
 </Project>
