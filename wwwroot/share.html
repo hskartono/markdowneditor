@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shared Document</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    <style>
+        .share-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 24px;
+            background-color: #fff;
+            min-height: 100vh;
+        }
+        .share-header {
+            margin-bottom: 32px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #e1e4e8;
+        }
+        .share-title {
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .share-date {
+            font-size: 14px;
+            color: #57606a;
+        }
+        .share-content {
+            font-size: 16px;
+            line-height: 1.6;
+        }
+        .share-footer {
+            margin-top: 40px;
+            padding-top: 16px;
+            border-top: 1px solid #e1e4e8;
+            text-align: center;
+            color: #57606a;
+            font-size: 14px;
+        }
+        .error-message {
+            text-align: center;
+            padding: 40px;
+            color: #cf222e;
+        }
+    </style>
+</head>
+<body>
+    <div class="share-container">
+        <div id="loading" style="text-align: center; padding: 40px;">Loading...</div>
+        <div id="error" class="error-message" style="display: none;"></div>
+        <div id="content" style="display: none;">
+            <div class="share-header">
+                <h1 id="title" class="share-title">Untitled</h1>
+                <div id="date" class="share-date"></div>
+            </div>
+            <div id="markdown" class="share-content markdown-body"></div>
+            <div class="share-footer">
+                <p>Shared via Markdown Editor</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const shareId = window.location.pathname.split('/').pop();
+
+            try {
+                const response = await fetch(`/api/share/${shareId}`);
+                if (!response.ok) {
+                    throw new Error('Document not found');
+                }
+
+                const doc = await response.json();
+
+                document.getElementById('title').textContent = doc.title || 'Untitled';
+                document.getElementById('date').textContent = `Created ${new Date(doc.createdAt).toLocaleDateString()}`;
+                document.getElementById('markdown').innerHTML = marked.parse(doc.content);
+
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').style.display = 'block';
+
+                // Update page title
+                document.title = doc.title || 'Shared Document';
+
+            } catch (error) {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').textContent = 'Document not found or error loading document.';
+            }
+        });
+    </script>
+</body>
+</html>

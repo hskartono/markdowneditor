@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown Editor</title>
+    <!-- CodeMirror CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/github.min.css">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>Documents</h2>
+                <button id="newBtn" class="btn-new" title="New Document">+</button>
+            </div>
+            <div id="documentList" class="document-list">
+                <!-- Documents will be loaded here -->
+            </div>
+            <div id="loadingSentinel" class="loading-sentinel"></div>
+        </aside>
+
+        <!-- Main Editor Area -->
+        <main class="main-content">
+            <div class="editor-header">
+                <h1>Markdown Editor</h1>
+                <div class="tabs">
+                    <button id="writeTab" class="tab-btn active">Write</button>
+                    <button id="previewTab" class="tab-btn">Preview</button>
+                </div>
+            </div>
+
+            <!-- Editor Tabs Content -->
+            <div class="editor-container">
+                <div id="editorWrapper" class="editor-wrapper">
+                    <textarea id="editor" class="editor"></textarea>
+                </div>
+                <div id="preview" class="preview markdown-body" style="display: none;"></div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="actions">
+                <button id="saveBtn" class="btn btn-primary">Save</button>
+                <button id="deleteBtn" class="btn btn-danger">Delete</button>
+                <button id="shareBtn" class="btn btn-secondary">Share</button>
+                <span id="saveStatus" class="save-status"></span>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <!-- CodeMirror JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/mode/overlay.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/markdown/markdown.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/gfm/gfm.min.js"></script>
+    <!-- Marked.js for preview -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    <!-- App JS -->
+    <script src="/app.js"></script>
+</body>
+</html>
