@@ -9,6 +9,8 @@ const state = {
     autoSaveTimeout: null
 };
 
+const API_BASE_URL = '/gistbackend';
+
 // DOM Elements (will be initialized after DOMContentLoaded)
 let editorTextarea, editorWrapper, preview, documentList, writeTab, previewTab;
 let newBtn, saveBtn, deleteBtn, shareBtn, saveStatus, loadingSentinel, toast;
@@ -132,7 +134,7 @@ async function loadDocuments() {
     loadingSentinel.textContent = 'Loading...';
 
     try {
-        const response = await fetch(`/api/documents?page=${state.currentPage}&pageSize=20`);
+        const response = await fetch(`${API_BASE_URL}/api/documents?page=${state.currentPage}&pageSize=20`);
         const data = await response.json();
 
         state.documents.push(...data.documents);
@@ -186,7 +188,7 @@ function createDocumentListItem(doc) {
 // Load Document
 async function loadDocument(id) {
     try {
-        const response = await fetch(`/api/documents/${id}`);
+        const response = await fetch(`${API_BASE_URL}/api/documents/${id}`);
         if (!response.ok) throw new Error('Failed to load document');
 
         const doc = await response.json();
@@ -222,7 +224,7 @@ async function loadDocument(id) {
 // Create New Document
 async function createNewDocument() {
     try {
-        const response = await fetch('/api/documents', {
+        const response = await fetch(`${API_BASE_URL}/api/documents`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content: '' })
@@ -276,7 +278,7 @@ async function saveDocument() {
     try {
         saveStatus.textContent = 'Saving...';
 
-        const response = await fetch(`/api/documents/${state.currentDocId}`, {
+        const response = await fetch(`${API_BASE_URL}/api/documents/${state.currentDocId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content: codeMirror.getValue() })
@@ -341,7 +343,7 @@ async function deleteDocument() {
     }
 
     try {
-        const response = await fetch(`/api/documents/${state.currentDocId}`, {
+        const response = await fetch(`${API_BASE_URL}/api/documents/${state.currentDocId}`, {
             method: 'DELETE'
         });
 
@@ -382,7 +384,7 @@ async function shareDocument() {
     }
 
     try {
-        const response = await fetch(`/api/documents/${state.currentDocId}`);
+        const response = await fetch(`${API_BASE_URL}/api/documents/${state.currentDocId}`);
         if (!response.ok) throw new Error('Failed to get document');
 
         const doc = await response.json();
@@ -443,7 +445,7 @@ async function uploadImage(file) {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch('/api/upload', {
+    const response = await fetch(`${API_BASE_URL}/api/upload`, {
         method: 'POST',
         body: formData
     });
