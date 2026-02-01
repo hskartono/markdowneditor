@@ -7,8 +7,8 @@
 *.userprefs
 
 ## Build output
-#bin/
-#obj/
+bin/
+obj/
 
 ## Logs
 *.log
