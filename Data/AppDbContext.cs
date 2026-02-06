@@ -10,6 +10,7 @@ public class AppDbContext : DbContext
     }
 
     public DbSet<Document> Documents { get; set; }
+    public DbSet<Folder> Folders { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -19,6 +20,15 @@ public class AppDbContext : DbContext
         {
             entity.HasIndex(e => e.ShareId).IsUnique();
             entity.HasIndex(e => e.CreatedAt);
+            entity.HasOne(e => e.Folder)
+                  .WithMany(f => f.Documents)
+                  .HasForeignKey(e => e.FolderId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<Folder>(entity =>
+        {
+            entity.HasIndex(e => e.Name);
         });
     }
 }

@@ -2,18 +2,25 @@
 const state = {
     currentDocId: null,
     documents: [],
+    folders: [],
     currentPage: 0,
     hasMore: true,
     isLoading: false,
     activeTab: 'write',
-    autoSaveTimeout: null
+    autoSaveTimeout: null,
+    currentFolderFilter: null, // null = show all, 0 = root only, >0 = specific folder
+    expandedFolders: new Set(),
+    contextMenuTarget: null
 };
 
-const API_BASE_URL = '/gistbackend';
+const API_BASE_URL = 'https://localhost:53933';
+const APP_APP_URL = `${window.location.origin}`;
 
 // DOM Elements (will be initialized after DOMContentLoaded)
 let editorTextarea, editorWrapper, preview, documentList, writeTab, previewTab;
 let newBtn, saveBtn, deleteBtn, shareBtn, saveStatus, loadingSentinel, toast;
+let toggleSidebarBtn, sidebar, fileInput;
+let newFolderBtn, folderContextMenu, docContextMenu;
 
 // CodeMirror Instance
 let codeMirror = null;
@@ -34,6 +41,12 @@ document.addEventListener('DOMContentLoaded', () => {
     saveStatus = document.getElementById('saveStatus');
     loadingSentinel = document.getElementById('loadingSentinel');
     toast = document.getElementById('toast');
+    toggleSidebarBtn = document.getElementById('toggleSidebarBtn');
+    sidebar = document.getElementById('sidebar');
+    fileInput = document.getElementById('fileInput');
+    newFolderBtn = document.getElementById('newFolderBtn');
+    folderContextMenu = document.getElementById('folderContextMenu');
+    docContextMenu = document.getElementById('docContextMenu');
 
     // Check if CodeMirror is loaded
     if (typeof CodeMirror === 'undefined') {
@@ -45,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeCodeMirror();
     setupEventListeners();
     setupInfiniteScroll();
-    loadDocuments();
+    loadFolders().then(() => loadDocuments());
 
     // Disable buttons initially (no document selected)
     updateButtonStates();
@@ -60,11 +73,24 @@ function initializeCodeMirror() {
         lineWrapping: true,
         autofocus: false,
         placeholder: 'Click "+" to create a new document or select a document from the list',
+        undoDepth: 200,
         extraKeys: {
             'Ctrl-S': function(cm) {
                 saveDocument();
                 return false;
-            }
+            },
+            'Ctrl-B': function(cm) {
+                wrapSelection(cm, '**', '**');
+            },
+            'Ctrl-I': function(cm) {
+                wrapSelection(cm, '_', '_');
+            },
+            'Ctrl-U': function(cm) {
+                wrapSelection(cm, '<u>', '</u>');
+            },
+            'Ctrl-Z': 'undo',
+            'Ctrl-Y': 'redo',
+            'Ctrl-Shift-Z': 'redo'
         }
     });
 
@@ -90,6 +116,44 @@ function setupEventListeners() {
     saveBtn.addEventListener('click', saveDocument);
     deleteBtn.addEventListener('click', deleteDocument);
     shareBtn.addEventListener('click', shareDocument);
+
+    // Sidebar toggle
+    toggleSidebarBtn.addEventListener('click', toggleSidebar);
+
+    // Folder management
+    newFolderBtn.addEventListener('click', createFolder);
+
+    // Context menu actions
+    folderContextMenu.addEventListener('click', handleFolderContextAction);
+    docContextMenu.addEventListener('click', handleDocContextAction);
+
+    // Close context menus on click outside
+    document.addEventListener('click', () => {
+        folderContextMenu.style.display = 'none';
+        docContextMenu.style.display = 'none';
+    });
+
+    // Toolbar buttons
+    document.getElementById('tbUndo').addEventListener('click', () => codeMirror.undo());
+    document.getElementById('tbRedo').addEventListener('click', () => codeMirror.redo());
+    document.getElementById('tbBold').addEventListener('click', () => wrapSelection(codeMirror, '**', '**'));
+    document.getElementById('tbItalic').addEventListener('click', () => wrapSelection(codeMirror, '_', '_'));
+    document.getElementById('tbUnderline').addEventListener('click', () => wrapSelection(codeMirror, '<u>', '</u>'));
+    document.getElementById('tbHeading').addEventListener('click', () => insertAtLineStart(codeMirror, '## '));
+    document.getElementById('tbStrikethrough').addEventListener('click', () => wrapSelection(codeMirror, '~~', '~~'));
+    document.getElementById('tbCode').addEventListener('click', () => wrapSelection(codeMirror, '`', '`'));
+    document.getElementById('tbCodeBlock').addEventListener('click', () => wrapSelection(codeMirror, '```\n', '\n```'));
+    document.getElementById('tbUl').addEventListener('click', () => insertAtLineStart(codeMirror, '- '));
+    document.getElementById('tbOl').addEventListener('click', () => insertAtLineStart(codeMirror, '1. '));
+    document.getElementById('tbQuote').addEventListener('click', () => insertAtLineStart(codeMirror, '> '));
+    document.getElementById('tbLink').addEventListener('click', () => insertLink(codeMirror));
+    document.getElementById('tbImage').addEventListener('click', () => insertImage(codeMirror));
+    document.getElementById('tbHr').addEventListener('click', () => insertBlock(codeMirror, '\n---\n'));
+    document.getElementById('tbOpen').addEventListener('click', () => fileInput.click());
+    document.getElementById('tbSaveAs').addEventListener('click', downloadMarkdown);
+
+    // File input change
+    fileInput.addEventListener('change', openMarkdownFile);
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
@@ -126,6 +190,17 @@ function renderPreview() {
     preview.innerHTML = marked.parse(markdown);
 }
 
+// Load Folders
+async function loadFolders() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/folders`);
+        const folders = await response.json();
+        state.folders = folders;
+    } catch (error) {
+        console.error('Failed to load folders', error);
+    }
+}
+
 // Load Documents
 async function loadDocuments() {
     if (state.isLoading || !state.hasMore) return;
@@ -134,33 +209,100 @@ async function loadDocuments() {
     loadingSentinel.textContent = 'Loading...';
 
     try {
-        const response = await fetch(`${API_BASE_URL}/api/documents?page=${state.currentPage}&pageSize=20`);
+        const response = await fetch(`${API_BASE_URL}/api/documents?page=${state.currentPage}&pageSize=200`);
         const data = await response.json();
 
         state.documents.push(...data.documents);
         state.hasMore = data.hasMore;
         state.currentPage++;
 
-        renderDocumentList();
+        renderSidebar();
     } catch (error) {
         showToast('Failed to load documents', 'error');
         console.error(error);
     } finally {
         state.isLoading = false;
-        loadingSentinel.textContent = state.hasMore ? '' : 'No more documents';
+        loadingSentinel.textContent = state.hasMore ? '' : '';
     }
 }
 
-// Render Document List
-function renderDocumentList() {
-    const existingItems = documentList.querySelectorAll('.document-item');
-    const startIndex = existingItems.length;
+// Render full sidebar with folders + documents
+function renderSidebar() {
+    documentList.innerHTML = '';
 
-    for (let i = startIndex; i < state.documents.length; i++) {
-        const doc = state.documents[i];
-        const item = createDocumentListItem(doc);
-        documentList.appendChild(item);
+    // Render folders
+    state.folders.forEach(folder => {
+        const group = createFolderGroup(folder);
+        documentList.appendChild(group);
+    });
+
+    // Render uncategorized documents (no folder)
+    const rootDocs = state.documents.filter(d => !d.folderId);
+    if (rootDocs.length > 0 && state.folders.length > 0) {
+        const label = document.createElement('div');
+        label.className = 'uncategorized-label';
+        label.textContent = 'Uncategorized';
+        documentList.appendChild(label);
     }
+    rootDocs.forEach(doc => {
+        documentList.appendChild(createDocumentListItem(doc));
+    });
+}
+
+function createFolderGroup(folder) {
+    const group = document.createElement('div');
+    group.className = 'folder-group';
+    group.dataset.folderId = folder.id;
+
+    const isExpanded = state.expandedFolders.has(folder.id);
+    const folderDocs = state.documents.filter(d => d.folderId === folder.id);
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'folder-header';
+    header.innerHTML = `
+        <span class="folder-icon ${isExpanded ? 'expanded' : ''}">&#9654;</span>
+        <span class="folder-emoji">&#128193;</span>
+        <span class="folder-name">${escapeHtml(folder.name)}</span>
+        <span class="folder-count">${folderDocs.length}</span>
+    `;
+
+    header.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleFolder(folder.id);
+    });
+
+    header.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        state.contextMenuTarget = folder.id;
+        showContextMenu(folderContextMenu, e.clientX, e.clientY);
+    });
+
+    group.appendChild(header);
+
+    // Contents
+    const contents = document.createElement('div');
+    contents.className = 'folder-contents' + (isExpanded ? '' : ' collapsed');
+    if (isExpanded) {
+        contents.style.maxHeight = (folderDocs.length * 80 + 20) + 'px';
+    }
+
+    folderDocs.forEach(doc => {
+        contents.appendChild(createDocumentListItem(doc));
+    });
+
+    group.appendChild(contents);
+    return group;
+}
+
+function toggleFolder(folderId) {
+    if (state.expandedFolders.has(folderId)) {
+        state.expandedFolders.delete(folderId);
+    } else {
+        state.expandedFolders.add(folderId);
+    }
+    renderSidebar();
 }
 
 function createDocumentListItem(doc) {
@@ -171,16 +313,23 @@ function createDocumentListItem(doc) {
     }
 
     const title = doc.title || 'Untitled';
-    const preview = doc.preview || 'No content';
+    const previewText = doc.preview || 'No content';
     const date = formatDate(doc.createdAt);
 
     item.innerHTML = `
         <div class="document-title">${escapeHtml(title)}</div>
-        <div class="document-preview">${escapeHtml(preview)}</div>
+        <div class="document-preview">${escapeHtml(previewText)}</div>
         <div class="document-date">${date}</div>
     `;
 
     item.addEventListener('click', () => loadDocument(doc.id));
+
+    item.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        state.contextMenuTarget = doc.id;
+        showDocContextMenu(e.clientX, e.clientY);
+    });
 
     return item;
 }
@@ -203,11 +352,9 @@ async function loadDocument(id) {
         document.querySelectorAll('.document-item').forEach(item => {
             item.classList.remove('active');
         });
-        const items = document.querySelectorAll('.document-item');
-        const docIndex = state.documents.findIndex(d => d.id === id);
-        if (docIndex !== -1 && items[docIndex]) {
-            items[docIndex].classList.add('active');
-        }
+
+        // Re-render to show active state correctly
+        renderSidebar();
 
         // Switch to write tab
         switchTab('write');
@@ -247,12 +394,12 @@ async function createNewDocument() {
             title: null,
             preview: '',
             createdAt: doc.createdAt,
-            updatedAt: doc.updatedAt
+            updatedAt: doc.updatedAt,
+            folderId: null
         });
 
         // Re-render list
-        documentList.innerHTML = '';
-        renderDocumentList();
+        renderSidebar();
 
         // Switch to write tab
         switchTab('write');
@@ -298,14 +445,7 @@ async function saveDocument() {
                 updatedAt: doc.updatedAt
             };
 
-            // Update list item
-            const items = document.querySelectorAll('.document-item');
-            if (items[docIndex]) {
-                const title = doc.title || 'Untitled';
-                const preview = doc.content.length > 100 ? doc.content.substring(0, 100) + '...' : doc.content;
-                items[docIndex].querySelector('.document-title').textContent = title;
-                items[docIndex].querySelector('.document-preview').textContent = preview;
-            }
+            renderSidebar();
         }
 
         saveStatus.textContent = 'Saved';
@@ -356,8 +496,7 @@ async function deleteDocument() {
         }
 
         // Re-render list
-        documentList.innerHTML = '';
-        renderDocumentList();
+        renderSidebar();
 
         // Clear editor and set back to read-only
         state.currentDocId = null;
@@ -388,7 +527,7 @@ async function shareDocument() {
         if (!response.ok) throw new Error('Failed to get document');
 
         const doc = await response.json();
-        const shareUrl = `${window.location.origin}/share/${doc.shareId}`;
+        const shareUrl = `${APP_APP_URL}/share/${doc.shareId}`;
 
         await navigator.clipboard.writeText(shareUrl);
         showToast('Share link copied to clipboard!', 'success');
@@ -490,6 +629,284 @@ function showToast(message, type = 'info') {
     setTimeout(() => {
         toast.classList.remove('show');
     }, 3000);
+}
+
+// === Folder Management ===
+
+async function createFolder() {
+    const name = prompt('Enter folder name:');
+    if (!name || !name.trim()) return;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/folders`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name.trim() })
+        });
+
+        if (!response.ok) throw new Error('Failed to create folder');
+
+        const folder = await response.json();
+        state.folders.push(folder);
+        state.expandedFolders.add(folder.id);
+        renderSidebar();
+
+        showToast('Folder created', 'success');
+    } catch (error) {
+        showToast('Failed to create folder', 'error');
+        console.error(error);
+    }
+}
+
+async function renameFolder(folderId) {
+    const folder = state.folders.find(f => f.id === folderId);
+    if (!folder) return;
+
+    const newName = prompt('Rename folder:', folder.name);
+    if (!newName || !newName.trim() || newName.trim() === folder.name) return;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/folders/${folderId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newName.trim() })
+        });
+
+        if (!response.ok) throw new Error('Failed to rename folder');
+
+        const updated = await response.json();
+        folder.name = updated.name;
+        folder.updatedAt = updated.updatedAt;
+        renderSidebar();
+
+        showToast('Folder renamed', 'success');
+    } catch (error) {
+        showToast('Failed to rename folder', 'error');
+        console.error(error);
+    }
+}
+
+async function deleteFolder(folderId) {
+    const folder = state.folders.find(f => f.id === folderId);
+    if (!folder) return;
+
+    if (!confirm(`Delete folder "${folder.name}"? Documents inside will be moved to root.`)) return;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/folders/${folderId}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) throw new Error('Failed to delete folder');
+
+        // Move docs to root in local state
+        state.documents.forEach(d => {
+            if (d.folderId === folderId) d.folderId = null;
+        });
+
+        state.folders = state.folders.filter(f => f.id !== folderId);
+        state.expandedFolders.delete(folderId);
+        renderSidebar();
+
+        showToast('Folder deleted', 'success');
+    } catch (error) {
+        showToast('Failed to delete folder', 'error');
+        console.error(error);
+    }
+}
+
+async function moveDocumentToFolder(docId, folderId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/documents/${docId}/move`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folderId: folderId })
+        });
+
+        if (!response.ok) throw new Error('Failed to move document');
+
+        // Update local state
+        const doc = state.documents.find(d => d.id === docId);
+        if (doc) {
+            doc.folderId = folderId;
+        }
+
+        // Expand target folder so user sees the moved doc
+        if (folderId) {
+            state.expandedFolders.add(folderId);
+        }
+
+        renderSidebar();
+        showToast(folderId ? 'Document moved to folder' : 'Document moved to root', 'success');
+    } catch (error) {
+        showToast('Failed to move document', 'error');
+        console.error(error);
+    }
+}
+
+// Context Menu Helpers
+function showContextMenu(menu, x, y) {
+    folderContextMenu.style.display = 'none';
+    docContextMenu.style.display = 'none';
+
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+    menu.style.display = 'block';
+
+    // Keep menu within viewport
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+        menu.style.left = (window.innerWidth - rect.width - 8) + 'px';
+    }
+    if (rect.bottom > window.innerHeight) {
+        menu.style.top = (window.innerHeight - rect.height - 8) + 'px';
+    }
+}
+
+function showDocContextMenu(x, y) {
+    // Build folder list for "move to" options
+    const moveFoldersContainer = document.getElementById('docContextMoveFolders');
+    moveFoldersContainer.innerHTML = '';
+
+    if (state.folders.length > 0) {
+        const divider = document.createElement('div');
+        divider.className = 'context-menu-divider';
+        moveFoldersContainer.appendChild(divider);
+
+        state.folders.forEach(folder => {
+            const btn = document.createElement('button');
+            btn.className = 'context-menu-item';
+            btn.dataset.action = 'move';
+            btn.dataset.folderId = folder.id;
+            btn.textContent = `?? Move to ${folder.name}`;
+            moveFoldersContainer.appendChild(btn);
+        });
+    }
+
+    showContextMenu(docContextMenu, x, y);
+}
+
+function handleFolderContextAction(e) {
+    const btn = e.target.closest('.context-menu-item');
+    if (!btn) return;
+
+    const action = btn.dataset.action;
+    const folderId = state.contextMenuTarget;
+
+    folderContextMenu.style.display = 'none';
+
+    if (action === 'rename') {
+        renameFolder(folderId);
+    } else if (action === 'delete') {
+        deleteFolder(folderId);
+    }
+}
+
+function handleDocContextAction(e) {
+    const btn = e.target.closest('.context-menu-item');
+    if (!btn) return;
+
+    const action = btn.dataset.action;
+    const docId = state.contextMenuTarget;
+
+    docContextMenu.style.display = 'none';
+
+    if (action === 'move-root') {
+        moveDocumentToFolder(docId, null);
+    } else if (action === 'move') {
+        const folderId = parseInt(btn.dataset.folderId);
+        moveDocumentToFolder(docId, folderId);
+    }
+}
+
+// Toggle Sidebar
+function toggleSidebar() {
+    sidebar.classList.toggle('collapsed');
+    setTimeout(() => {
+        if (codeMirror) codeMirror.refresh();
+    }, 310);
+}
+
+// Toolbar Helpers
+function wrapSelection(cm, before, after) {
+    const selection = cm.getSelection();
+    if (selection) {
+        cm.replaceSelection(before + selection + after);
+    } else {
+        const cursor = cm.getCursor();
+        cm.replaceRange(before + after, cursor);
+        cm.setCursor({ line: cursor.line, ch: cursor.ch + before.length });
+    }
+    cm.focus();
+}
+
+function insertAtLineStart(cm, prefix) {
+    const cursor = cm.getCursor();
+    const line = cm.getLine(cursor.line);
+    cm.replaceRange(prefix + line, { line: cursor.line, ch: 0 }, { line: cursor.line, ch: line.length });
+    cm.setCursor({ line: cursor.line, ch: prefix.length + cursor.ch });
+    cm.focus();
+}
+
+function insertBlock(cm, text) {
+    const cursor = cm.getCursor();
+    cm.replaceRange(text, cursor);
+    cm.focus();
+}
+
+function insertLink(cm) {
+    const selection = cm.getSelection();
+    const text = selection || 'link text';
+    cm.replaceSelection('[' + text + '](url)');
+    cm.focus();
+}
+
+function insertImage(cm) {
+    const selection = cm.getSelection();
+    const alt = selection || 'alt text';
+    cm.replaceSelection('![' + alt + '](url)');
+    cm.focus();
+}
+
+// Open Markdown File from disk
+function openMarkdownFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        codeMirror.setOption('readOnly', false);
+        codeMirror.getWrapperElement().classList.remove('CodeMirror-readonly');
+        codeMirror.setValue(e.target.result);
+        codeMirror.focus();
+        showToast('File loaded: ' + file.name, 'success');
+    };
+    reader.readAsText(file);
+    fileInput.value = '';
+}
+
+// Download current content as .md file
+function downloadMarkdown() {
+    const content = codeMirror.getValue();
+    if (!content) {
+        showToast('No content to download', 'error');
+        return;
+    }
+
+    const firstLine = content.split('\n')[0].replace(/^#+\s*/, '').trim();
+    const filename = (firstLine || 'document') + '.md';
+
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showToast('File downloaded: ' + filename, 'success');
 }
 
 // Utility Functions

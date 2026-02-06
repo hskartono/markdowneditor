@@ -7,30 +7,72 @@
     <!-- CodeMirror CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/github.min.css">
-    <link rel="stylesheet" href="/gist/styles.css">
+    <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
     <div class="container">
         <!-- Sidebar -->
-        <aside class="sidebar">
+        <aside id="sidebar" class="sidebar">
             <div class="sidebar-header">
                 <h2>Documents</h2>
-                <button id="newBtn" class="btn-new" title="New Document">+</button>
+                <div class="sidebar-header-actions">
+                    <button id="newFolderBtn" class="btn-new" title="New Folder">&#128193;</button>
+                    <button id="newBtn" class="btn-new" title="New Document">+</button>
+                </div>
             </div>
             <div id="documentList" class="document-list">
-                <!-- Documents will be loaded here -->
+                <!-- Folders and documents will be loaded here -->
             </div>
             <div id="loadingSentinel" class="loading-sentinel"></div>
         </aside>
 
+        <!-- Folder Context Menu -->
+        <div id="folderContextMenu" class="context-menu" style="display:none;">
+            <button class="context-menu-item" data-action="rename">&#9998; Rename</button>
+            <button class="context-menu-item" data-action="delete">&#128465; Delete</button>
+        </div>
+
+        <!-- Document Context Menu -->
+        <div id="docContextMenu" class="context-menu" style="display:none;">
+            <button class="context-menu-item" data-action="move-root">&#128194; Move to Root</button>
+            <div id="docContextMoveFolders"></div>
+        </div>
+
         <!-- Main Editor Area -->
         <main class="main-content">
             <div class="editor-header">
+                <button id="toggleSidebarBtn" class="btn-toggle-sidebar" title="Toggle Sidebar">&#9776;</button>
                 <h1>Markdown Editor</h1>
                 <div class="tabs">
                     <button id="writeTab" class="tab-btn active">Write</button>
                     <button id="previewTab" class="tab-btn">Preview</button>
                 </div>
+            </div>
+
+            <!-- Toolbar -->
+            <div class="toolbar">
+                <button id="tbUndo" class="toolbar-btn" title="Undo (Ctrl+Z)">&#x21B6;</button>
+                <button id="tbRedo" class="toolbar-btn" title="Redo (Ctrl+Y)">&#x21B7;</button>
+                <span class="toolbar-separator"></span>
+                <button id="tbBold" class="toolbar-btn" title="Bold (Ctrl+B)"><b>B</b></button>
+                <button id="tbItalic" class="toolbar-btn" title="Italic (Ctrl+I)"><i>I</i></button>
+                <button id="tbUnderline" class="toolbar-btn" title="Underline (Ctrl+U)"><u>U</u></button>
+                <span class="toolbar-separator"></span>
+                <button id="tbHeading" class="toolbar-btn" title="Heading">H</button>
+                <button id="tbStrikethrough" class="toolbar-btn" title="Strikethrough"><s>S</s></button>
+                <button id="tbCode" class="toolbar-btn" title="Inline Code">&lt;/&gt;</button>
+                <button id="tbCodeBlock" class="toolbar-btn" title="Code Block">&#x2337;</button>
+                <span class="toolbar-separator"></span>
+                <button id="tbUl" class="toolbar-btn" title="Unordered List">&#8226;</button>
+                <button id="tbOl" class="toolbar-btn" title="Ordered List">1.</button>
+                <button id="tbQuote" class="toolbar-btn" title="Blockquote">&#x201C;</button>
+                <button id="tbLink" class="toolbar-btn" title="Link">&#128279;</button>
+                <button id="tbImage" class="toolbar-btn" title="Image">&#128247;</button>
+                <button id="tbHr" class="toolbar-btn" title="Horizontal Rule">&#8213;</button>
+                <span class="toolbar-separator"></span>
+                <button id="tbOpen" class="toolbar-btn" title="Open Markdown File">&#128194;</button>
+                <button id="tbSaveAs" class="toolbar-btn" title="Download as .md">&#128190;</button>
+                <input type="file" id="fileInput" accept=".md,.markdown,.txt" style="display:none;">
             </div>
 
             <!-- Editor Tabs Content -->
@@ -63,6 +105,6 @@
     <!-- Marked.js for preview -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
     <!-- App JS -->
-    <script src="/gist/app.js"></script>
+    <script src="/app.js"></script>
 </body>
 </html>

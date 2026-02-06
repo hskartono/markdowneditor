@@ -31,11 +31,39 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(optio
 
 var app = builder.Build();
 
-// Ensure database is created
+// Ensure database is created and migrated
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
+
+    // If the database already exists but has no migration history (e.g. created via
+    // EnsureCreated), mark all existing migrations as applied so Migrate() won't
+    // attempt to re-create tables that are already present.
+    if (db.Database.CanConnect())
+    {
+        var pending = db.Database.GetPendingMigrations().ToList();
+        var applied = db.Database.GetAppliedMigrations().ToList();
+
+        if (pending.Any() && !applied.Any())
+        {
+            var allMigrations = db.Database.GetMigrations().ToList();
+
+            db.Database.ExecuteSqlRaw(
+                "CREATE TABLE IF NOT EXISTS \"__EFMigrationsHistory\" (" +
+                "\"MigrationId\" TEXT NOT NULL PRIMARY KEY, " +
+                "\"ProductVersion\" TEXT NOT NULL)");
+
+            foreach (var migration in allMigrations)
+            {
+                db.Database.ExecuteSqlRaw(
+                    "INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ({0}, {1})",
+                    migration,
+                    "8.0.0");
+            }
+        }
+    }
+
+    db.Database.Migrate();
 }
 
 app.UseCors();
@@ -43,11 +71,123 @@ app.UseStaticFiles();
 
 // API Endpoints
 
-// GET /api/documents?page={page}&pageSize={pageSize}
-app.MapGet("/api/documents", async (AppDbContext db, int page = 0, int pageSize = 20) =>
+// === Folder Endpoints ===
+
+// GET /api/folders
+app.MapGet("/api/folders", async (AppDbContext db) =>
 {
-    var totalCount = await db.Documents.CountAsync();
-    var documents = await db.Documents
+    var folders = await db.Folders
+        .OrderBy(f => f.Name)
+        .Select(f => new
+        {
+            f.Id,
+            f.Name,
+            DocumentCount = f.Documents.Count,
+            f.CreatedAt,
+            f.UpdatedAt
+        })
+        .ToListAsync();
+
+    return Results.Ok(folders);
+});
+
+// POST /api/folders
+app.MapPost("/api/folders", async (AppDbContext db, FolderRequest request) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Name))
+        return Results.BadRequest(new { error = "Folder name is required" });
+
+    var folder = new Folder
+    {
+        Name = request.Name.Trim(),
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+
+    db.Folders.Add(folder);
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new { folder.Id, folder.Name, DocumentCount = 0, folder.CreatedAt, folder.UpdatedAt });
+});
+
+// PUT /api/folders/{id}
+app.MapPut("/api/folders/{id:int}", async (AppDbContext db, int id, FolderRequest request) =>
+{
+    var folder = await db.Folders.FindAsync(id);
+    if (folder == null)
+        return Results.NotFound();
+
+    if (string.IsNullOrWhiteSpace(request.Name))
+        return Results.BadRequest(new { error = "Folder name is required" });
+
+    folder.Name = request.Name.Trim();
+    folder.UpdatedAt = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+
+    var documentCount = await db.Documents.CountAsync(d => d.FolderId == id);
+    return Results.Ok(new { folder.Id, folder.Name, DocumentCount = documentCount, folder.CreatedAt, folder.UpdatedAt });
+});
+
+// DELETE /api/folders/{id}
+app.MapDelete("/api/folders/{id:int}", async (AppDbContext db, int id) =>
+{
+    var folder = await db.Folders.FindAsync(id);
+    if (folder == null)
+        return Results.NotFound();
+
+    // Move documents out of folder (set FolderId to null)
+    var docs = await db.Documents.Where(d => d.FolderId == id).ToListAsync();
+    foreach (var doc in docs)
+    {
+        doc.FolderId = null;
+    }
+
+    db.Folders.Remove(folder);
+    await db.SaveChangesAsync();
+
+    return Results.NoContent();
+});
+
+// PUT /api/documents/{id}/move
+app.MapPut("/api/documents/{id:int}/move", async (AppDbContext db, int id, MoveDocumentRequest request) =>
+{
+    var document = await db.Documents.FindAsync(id);
+    if (document == null)
+        return Results.NotFound();
+
+    if (request.FolderId.HasValue)
+    {
+        var folder = await db.Folders.FindAsync(request.FolderId.Value);
+        if (folder == null)
+            return Results.BadRequest(new { error = "Folder not found" });
+    }
+
+    document.FolderId = request.FolderId;
+    document.UpdatedAt = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new { document.Id, document.FolderId });
+});
+
+// === Document Endpoints ===
+
+// GET /api/documents?page={page}&pageSize={pageSize}&folderId={folderId}
+app.MapGet("/api/documents", async (AppDbContext db, int page = 0, int pageSize = 20, int? folderId = null) =>
+{
+    IQueryable<Document> query = db.Documents;
+
+    if (folderId.HasValue)
+    {
+        if (folderId.Value == 0)
+            query = query.Where(d => d.FolderId == null);
+        else
+            query = query.Where(d => d.FolderId == folderId.Value);
+    }
+
+    var totalCount = await query.CountAsync();
+    var documents = await query
         .OrderByDescending(d => d.CreatedAt)
         .Skip(page * pageSize)
         .Take(pageSize)
@@ -57,7 +197,8 @@ app.MapGet("/api/documents", async (AppDbContext db, int page = 0, int pageSize 
             d.Title,
             Preview = d.Content.Length > 100 ? d.Content.Substring(0, 100) + "..." : d.Content,
             d.CreatedAt,
-            d.UpdatedAt
+            d.UpdatedAt,
+            d.FolderId
         })
         .ToListAsync();
 
@@ -189,3 +330,5 @@ app.Run();
 
 // Request DTOs
 record DocumentRequest(string? Content);
+record FolderRequest(string? Name);
+record MoveDocumentRequest(int? FolderId);

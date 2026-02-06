@@ -25,6 +25,31 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    transition: width 0.3s ease, min-width 0.3s ease;
+    min-width: 300px;
+}
+
+.sidebar.collapsed {
+    width: 0;
+    min-width: 0;
+    border-right: none;
+    overflow: hidden;
+}
+
+.btn-toggle-sidebar {
+    background: none;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 10px;
+    margin-right: 12px;
+    transition: background-color 0.2s;
+    line-height: 1;
+}
+
+.btn-toggle-sidebar:hover {
+    background-color: #f6f8fa;
 }
 
 .sidebar-header {
@@ -38,6 +63,11 @@ body {
 .sidebar-header h2 {
     font-size: 18px;
     font-weight: 600;
+}
+
+.sidebar-header-actions {
+    display: flex;
+    gap: 6px;
 }
 
 .btn-new {
@@ -103,6 +133,130 @@ body {
     margin-top: 4px;
 }
 
+/* Folder Styles */
+.folder-group {
+    margin-bottom: 4px;
+}
+
+.folder-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    border: 1px solid transparent;
+    user-select: none;
+    font-size: 14px;
+    font-weight: 600;
+    color: #24292e;
+    gap: 6px;
+}
+
+.folder-header:hover {
+    background-color: #f6f8fa;
+}
+
+.folder-header .folder-icon {
+    font-size: 14px;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
+}
+
+.folder-header .folder-icon.expanded {
+    transform: rotate(90deg);
+}
+
+.folder-header .folder-emoji {
+    flex-shrink: 0;
+}
+
+.folder-header .folder-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.folder-header .folder-count {
+    font-size: 11px;
+    color: #8b949e;
+    font-weight: 400;
+    background-color: #f0f0f0;
+    border-radius: 10px;
+    padding: 1px 7px;
+    flex-shrink: 0;
+}
+
+.folder-header .folder-name-input {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 600;
+    border: 1px solid #0969da;
+    border-radius: 4px;
+    padding: 2px 6px;
+    outline: none;
+    font-family: inherit;
+}
+
+.folder-contents {
+    padding-left: 16px;
+    overflow: hidden;
+    transition: max-height 0.25s ease;
+}
+
+.folder-contents.collapsed {
+    max-height: 0 !important;
+}
+
+.uncategorized-label {
+    font-size: 11px;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px 12px 4px 12px;
+    font-weight: 600;
+}
+
+/* Context Menu */
+.context-menu {
+    position: fixed;
+    background-color: #fff;
+    border: 1px solid #e1e4e8;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 2000;
+    min-width: 180px;
+    padding: 4px 0;
+    overflow: hidden;
+}
+
+.context-menu-item {
+    display: block;
+    width: 100%;
+    padding: 8px 16px;
+    border: none;
+    background: none;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    color: #24292e;
+    transition: background-color 0.1s;
+}
+
+.context-menu-item:hover {
+    background-color: #0969da;
+    color: #fff;
+}
+
+.context-menu-divider {
+    height: 1px;
+    background-color: #e1e4e8;
+    margin: 4px 0;
+}
+
 .loading-sentinel {
     height: 20px;
     text-align: center;
@@ -165,6 +319,48 @@ body {
     flex: 1;
     position: relative;
     overflow: hidden;
+}
+
+/* Toolbar */
+.toolbar {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-bottom: 1px solid #e1e4e8;
+    background-color: #f6f8fa;
+    flex-wrap: wrap;
+    gap: 2px;
+}
+
+.toolbar-btn {
+    width: 32px;
+    height: 32px;
+    border: 1px solid transparent;
+    background-color: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    color: #24292e;
+}
+
+.toolbar-btn:hover {
+    background-color: #e1e4e8;
+    border-color: #d0d7de;
+}
+
+.toolbar-btn:active {
+    background-color: #d0d7de;
+}
+
+.toolbar-separator {
+    width: 1px;
+    height: 20px;
+    background-color: #d0d7de;
+    margin: 0 6px;
 }
 
 .editor-wrapper {
@@ -477,6 +673,7 @@ body {
 @media (max-width: 768px) {
     .sidebar {
         width: 100%;
+        min-width: 100%;
         position: absolute;
         z-index: 100;
         height: 100vh;
@@ -488,11 +685,20 @@ body {
         transform: translateX(0);
     }
 
+    .sidebar.collapsed {
+        transform: translateX(-100%);
+        min-width: 100%;
+    }
+
     .editor-header h1 {
         font-size: 18px;
     }
 
     .actions {
         flex-wrap: wrap;
+    }
+
+    .toolbar {
+        padding: 4px 8px;
     }
 }

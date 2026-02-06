@@ -8,6 +8,8 @@ public class Document
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public string ShareId { get; set; } = Guid.NewGuid().ToString();
+    public int? FolderId { get; set; }
+    public Folder? Folder { get; set; }
 
     public void UpdateTitle()
     {
